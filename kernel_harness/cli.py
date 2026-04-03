@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from kernel_harness.autopilot import _candidate_to_prompt_assets, run_autopilot
+from kernel_harness.repo_state import collect_repo_state
 from kernel_harness.bundle import write_session_bundle
 from kernel_harness.ingest import load_response, parse_response
 from kernel_harness.session import (
@@ -34,7 +35,7 @@ PROFILE_CONFIGS = {
     "net": PACKAGE_ROOT / "configs" / "profiles" / "net.json",
 }
 VERDICTS = ["cve_candidate", "plausible_security_bug", "latent_bug", "not_cve_candidate", "needs_more_context"]
-SUBCOMMANDS = {"scan", "inspect", "codex", "next", "record", "ingest", "loop", "status", "autopilot", "syzbot-fetch", "syzbot-stats"}
+SUBCOMMANDS = {"scan", "inspect", "codex", "next", "record", "ingest", "loop", "status", "doctor", "autopilot", "syzbot-fetch", "syzbot-stats"}
 MAX_MANUAL_FOLLOWUPS = 2
 
 
@@ -88,6 +89,9 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="Show session review progress.")
     status_parser.add_argument("session_dir", type=Path, help="Path to a generated session directory.")
 
+    doctor_parser = subparsers.add_parser("doctor", help="Inspect repository cleanliness and git context for a kernel tree.")
+    doctor_parser.add_argument("repo_root", type=Path, help="Path to the Linux kernel source tree to inspect.")
+
     autopilot_parser = subparsers.add_parser("autopilot", help="Run Codex non-interactively for a fixed time budget.")
     autopilot_parser.add_argument("session_dir", type=Path, help="Path to a generated session directory.")
     autopilot_parser.add_argument("--duration", default="1h", help="Total autopilot budget. Example: 30m, 1h.")
@@ -98,6 +102,7 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_parser.add_argument("--no-full-auto", action="store_true", help="Do not pass --full-auto to codex exec.")
     autopilot_parser.add_argument("--dangerously-bypass-approvals-and-sandbox", action="store_true", help="Pass through Codex's unsafe bypass flag.")
     autopilot_parser.add_argument("--stop-on-finding", action="store_true", help="Stop as soon as a strong candidate is found.")
+    autopilot_parser.add_argument("--require-clean-tree", action="store_true", help="Refuse to start if the kernel tree has local modifications.")
 
     fetch_parser = subparsers.add_parser("syzbot-fetch", help="Fetch syzbot dashboard data into local JSON.")
     fetch_parser.add_argument("source", help="syzbot dashboard URL, for example https://syzkaller.appspot.com/upstream")
@@ -143,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_loop(args)
     if args.command == "status":
         return _run_status(args)
+    if args.command == "doctor":
+        return _run_doctor(args)
     if args.command == "autopilot":
         return _run_autopilot(args)
     if args.command == "syzbot-fetch":
@@ -287,7 +294,21 @@ def _run_autopilot(args: argparse.Namespace) -> int:
         full_auto=not args.no_full_auto,
         unsafe_bypass=args.dangerously_bypass_approvals_and_sandbox,
         stop_on_finding=args.stop_on_finding,
+        require_clean_tree=args.require_clean_tree,
     )
+
+
+def _run_doctor(args: argparse.Namespace) -> int:
+    repo_root = Path(args.repo_root).expanduser().resolve()
+    state = collect_repo_state(repo_root)
+    print(f"repo_root={repo_root}")
+    print(f"is_git={int(bool(state.get('is_git')))}")
+    print(f"branch={state.get('branch', '')}")
+    print(f"head={state.get('head', '')}")
+    print(f"dirty={int(bool(state.get('dirty')))}")
+    for item in state.get("dirty_files", []):
+        print(f"dirty_file={item}")
+    return 0
 
 
 def _run_status(args: argparse.Namespace) -> int:

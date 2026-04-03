@@ -26,6 +26,14 @@ Protect AI의 `vulnhuntr`는 `엔트리 파일 분석 → 추가 컨텍스트 �
 
 이 레포는 이제 단순 스캐너가 아니라 `실행 가능한 Codex 운영 하네스`다.
 
+v2에서 강화된 점은 다음과 같다.
+
+- `autopilot`이 strong finding을 `new_candidate`, `known_issue`, `dirty_tree_suspect`로 분류
+- dirty kernel tree를 자동 감지하고 `--require-clean-tree`로 실행 전 차단 가능
+- top-N 번들을 넘어가는 rank도 즉석 프롬프트 생성으로 계속 탐색 가능
+- `doctor` 명령으로 현재 커널 트리의 git 상태와 dirty 파일을 바로 확인 가능
+- finding을 text index와 JSONL 둘 다로 누적해서 후처리하기 쉬움
+
 - `scan`: 커널 트리 스캔 후 세션 생성
 - `inspect`: 생성된 세션 우선순위 요약 출력
 - `codex`: Codex CLI에 바로 붙여 넣을 조사 프롬프트 출력
@@ -67,7 +75,14 @@ python -m kernel_harness codex /linux_harness/artifacts/session-YYYYMMDDTHHMMSSZ
 python3 -m kernel_harness autopilot /linux_harness/artifacts/session-YYYYMMDDTHHMMSSZ \
   --duration 1h \
   --per-run-timeout 20m \
-  --include-snippet
+  --include-snippet \
+  --require-clean-tree
+```
+
+커널 트리가 깨끗한지 먼저 확인하려면:
+
+```bash
+python3 -m kernel_harness doctor /linux
 ```
 
 예전 방식도 유지된다.
@@ -196,3 +211,24 @@ python -m kernel_harness /path/to/linux
 - syzbot 연동은 공개 HTML 페이지 파싱에 의존한다.
 - false positive를 줄이려면 사람이 teardown path와 reachability를 검증해야 한다.
 - 커널 소스 트리 크기가 크므로 첫 버전은 `정밀 분석`보다 `좋은 시작점 선별`에 초점을 둔다.
+
+## Autopilot v2 산출물
+
+`autopilot/` 아래에 다음 파일들이 생긴다.
+
+- `AUTOPILOT_STATUS.txt`: 현재 상태 스냅샷
+- `AUTOPILOT_PROGRESS.txt`: 실행 로그
+- `AUTOPILOT_FINDINGS.txt`: 모든 strong finding 인덱스
+- `AUTOPILOT_FINDINGS_NEW.txt`: 신규 후보로 분류된 finding만 누적
+- `AUTOPILOT_KNOWN_ISSUES.txt`: 이미 알려진 이슈로 분류된 finding
+- `AUTOPILOT_SUSPECTS.txt`: dirty tree나 repro 코드 영향이 의심되는 finding
+- `AUTOPILOT_FINDINGS.jsonl`: 후처리용 구조화 로그
+- `findings/new/`, `findings/known/`, `findings/suspects/`: 각 finding 원문
+
+분류 규칙은 간단하다.
+
+- `new_candidate`: 강한 finding이며 known marker와 dirty-tree 문제가 없음
+- `known_issue`: 응답 안에 CVE, fix commit, known marker가 잡힘
+- `dirty_tree_suspect`: 현재 커널 트리나 타깃 파일이 dirty 상태
+
+실전에서는 `/linux`처럼 실험 코드가 섞인 트리 대신 clean checkout을 두고 `--require-clean-tree`를 켜는 편이 맞다.
