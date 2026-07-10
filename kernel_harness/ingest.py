@@ -70,10 +70,6 @@ def _extract_verdict(text: str) -> str:
             mapped = _map_verdict(value)
             if mapped:
                 return mapped
-    lowered = text.lower()
-    for needle, mapped in VERDICT_RULES:
-        if needle in lowered:
-            return mapped
     raise ValueError("could not extract verdict from Codex response")
 
 
@@ -118,6 +114,9 @@ def _map_verdict(value: str) -> str:
         return ""
     lowered = value.lower().strip()
     for needle, mapped in VERDICT_RULES:
-        if lowered == needle or needle in lowered:
+        if lowered == needle:
+            return mapped
+    for needle, mapped in VERDICT_RULES:
+        if lowered.startswith((needle + ":", needle + " —", needle + " -")):
             return mapped
     return ""

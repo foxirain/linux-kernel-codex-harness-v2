@@ -4,17 +4,23 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kernel-codex-harness"
-version = "0.1.0"
-description = "Kernel-focused vulnerability hunting harness for Codex"
+version = "0.2.0"
+description = "Provenance-aware Linux kernel vulnerability review harness for Codex"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-  { name = "OpenAI Codex" }
+  { name = "foxirain" }
 ]
 dependencies = []
+
+[project.urls]
+Repository = "https://github.com/foxirain/linux-kernel-codex-harness-v2"
 
 [project.scripts]
 kernel-harness = "kernel_harness.cli:main"
 
 [tool.setuptools]
 packages = ["kernel_harness"]
+
+[tool.setuptools.package-data]
+kernel_harness = ["resources/*.json", "resources/profiles/*.json"]

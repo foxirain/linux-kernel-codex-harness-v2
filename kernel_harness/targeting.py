@@ -45,7 +45,7 @@ DEFAULT_PATTERNS = [
     },
     {
         "name": "allocator",
-        "pattern": r"\b(?:kz?alloc|kvz?alloc|vmalloc|kmem_cache_alloc)\b",
+        "pattern": r"\b(?:k[mz]alloc|kv[mz]alloc|vmalloc|kmem_cache_alloc)\b",
         "weight": 5,
         "rationale": "allocation around user input often couples to lifetime and bounds bugs.",
     },

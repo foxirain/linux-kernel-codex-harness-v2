@@ -44,7 +44,7 @@
     },
     {
       "name": "allocator",
-      "pattern": "\\b(?:kz?alloc|kvz?alloc|kmem_cache_alloc)\\b",
+      "pattern": "\\b(?:k[mz]alloc|kv[mz]alloc|kmem_cache_alloc)\\b",
       "weight": 5,
       "rationale": "allocation under packet-controlled lengths is high signal."
     },

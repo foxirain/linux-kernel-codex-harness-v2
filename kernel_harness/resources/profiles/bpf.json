@@ -38,7 +38,7 @@
     },
     {
       "name": "allocator",
-      "pattern": "\\b(?:kz?alloc|kvz?alloc|vmalloc|kmem_cache_alloc)\\b",
+      "pattern": "\\b(?:k[mz]alloc|kv[mz]alloc|vmalloc|kmem_cache_alloc)\\b",
       "weight": 5,
       "rationale": "map and program allocation sizes deserve scrutiny."
     },

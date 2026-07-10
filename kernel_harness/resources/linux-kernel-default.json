@@ -37,7 +37,7 @@
     },
     {
       "name": "allocator",
-      "pattern": "\\b(?:kz?alloc|kvz?alloc|vmalloc|kmem_cache_alloc)\\b",
+      "pattern": "\\b(?:k[mz]alloc|kv[mz]alloc|vmalloc|kmem_cache_alloc)\\b",
       "weight": 5,
       "rationale": "allocation around user input often couples to lifetime and bounds bugs."
     },

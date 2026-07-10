@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 STATE_FILENAME = "review_state.json"
@@ -73,7 +74,12 @@ def load_state(session_dir: Path) -> dict:
 def save_state(session_dir: Path, state: dict) -> None:
     path = state_path(session_dir)
     normalized = _normalize_state(session_dir, state)
-    path.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+    temp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    try:
+        temp_path.write_text(json.dumps(normalized, indent=2), encoding="utf-8")
+        temp_path.replace(path)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def set_pending_review(session_dir: Path, rank: int | None, target: str, prompt_source: str) -> dict:
@@ -105,26 +111,25 @@ def record_review(
     next_target: str,
     next_prompt: str,
     auto_advance: bool,
+    classification: dict | None = None,
 ) -> dict:
     state = load_state(session_dir)
-    state["history"].append(
-        {
-            "rank": rank,
-            "target": target,
-            "verdict": verdict,
-            "notes": notes,
-            "next_target": next_target,
-            "next_prompt": next_prompt,
-        }
-    )
+    history_entry = {
+        "rank": rank,
+        "target": target,
+        "verdict": verdict,
+        "notes": notes,
+        "next_target": next_target,
+        "next_prompt": next_prompt,
+    }
+    if classification:
+        history_entry["classification"] = classification
+    state["history"].append(history_entry)
     if next_target:
         state["manual_next_target"] = next_target
         state["manual_next_prompt"] = next_prompt
         state["manual_followup_depth"] = int(state.get("manual_followup_depth", 0)) + 1
-        if auto_advance and rank is not None and rank >= state.get("current_rank", 1):
-            state["current_rank"] = rank + 1
-    elif auto_advance and rank is not None and rank >= state.get("current_rank", 1):
-        state["current_rank"] = rank + 1
+    elif auto_advance and rank is not None:
         state["manual_next_target"] = ""
         state["manual_next_prompt"] = ""
         state["manual_followup_depth"] = 0
@@ -132,6 +137,12 @@ def record_review(
         state["manual_next_target"] = ""
         state["manual_next_prompt"] = ""
         state["manual_followup_depth"] = 0
+    if auto_advance:
+        done = completed_ranks(state)
+        next_rank = 1
+        while next_rank in done:
+            next_rank += 1
+        state["current_rank"] = next_rank
     state["pending_rank"] = None
     state["pending_target"] = ""
     state["pending_prompt_source"] = ""

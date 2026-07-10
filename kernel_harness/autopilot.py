@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from kernel_harness.ingest import parse_response
-from kernel_harness.novelty import STRONG_FINDING_VERDICTS, classify_finding
+from kernel_harness.finding_triage import STRONG_FINDING_VERDICTS, classify_finding
 from kernel_harness.prompting import render_bundle_prompt
 from kernel_harness.repo_state import collect_repo_state
 from kernel_harness.session import (
@@ -21,7 +21,6 @@ from kernel_harness.session import (
     set_pending_review,
 )
 
-PACKAGE_ROOT = Path(__file__).resolve().parent.parent
 MAX_MANUAL_FOLLOWUPS = 2
 AUTOPILOT_DIRNAME = "autopilot"
 
@@ -49,6 +48,7 @@ def run_autopilot(
     findings_new_dir = findings_dir / "new"
     findings_known_dir = findings_dir / "known"
     findings_suspects_dir = findings_dir / "suspects"
+    findings_unknown_dir = findings_dir / "unknown"
     parse_errors_dir = autopilot_dir / "parse_errors"
     for path in (
         autopilot_dir,
@@ -58,6 +58,7 @@ def run_autopilot(
         findings_new_dir,
         findings_known_dir,
         findings_suspects_dir,
+        findings_unknown_dir,
         parse_errors_dir,
     ):
         path.mkdir(parents=True, exist_ok=True)
@@ -67,8 +68,10 @@ def run_autopilot(
     findings_new_path = autopilot_dir / "AUTOPILOT_FINDINGS_NEW.txt"
     known_issues_path = autopilot_dir / "AUTOPILOT_KNOWN_ISSUES.txt"
     suspects_path = autopilot_dir / "AUTOPILOT_SUSPECTS.txt"
+    provenance_unknown_path = autopilot_dir / "AUTOPILOT_PROVENANCE_UNKNOWN.txt"
     findings_jsonl_path = autopilot_dir / "AUTOPILOT_FINDINGS.jsonl"
     status_path = autopilot_dir / "AUTOPILOT_STATUS.txt"
+    baseline_path = autopilot_dir / "AUTOPILOT_BASELINE.json"
 
     duration_seconds = _parse_duration(duration_spec)
     per_run_timeout_seconds = _parse_duration(per_run_timeout_spec)
@@ -76,6 +79,7 @@ def run_autopilot(
     deadline = time.monotonic() + duration_seconds
     run_index = _existing_run_count(prompts_dir)
     startup_repo_state = collect_repo_state(repo_root)
+    baseline_path.write_text(json.dumps(startup_repo_state, indent=2), encoding="utf-8")
 
     _append_text(
         progress_path,
@@ -89,7 +93,10 @@ def run_autopilot(
             f"model={model or '<default>'}\n"
             f"repo_branch={startup_repo_state.get('branch', '')}\n"
             f"repo_head={startup_repo_state.get('head', '')}\n"
+            f"repo_is_git={int(bool(startup_repo_state.get('is_git')))}\n"
+            f"repo_status_ok={int(bool(startup_repo_state.get('status_ok')))}\n"
             f"repo_dirty={int(bool(startup_repo_state.get('dirty')))}\n"
+            f"repo_error={startup_repo_state.get('error', '')}\n"
             f"dirty_files={len(startup_repo_state.get('dirty_files', []))}\n"
         ),
     )
@@ -102,11 +109,17 @@ def run_autopilot(
         duration_spec=duration_spec,
         runs=run_index,
     )
-    if require_clean_tree and startup_repo_state.get("dirty"):
-        _append_text(progress_path, "stop_reason=blocked_dirty_tree\n")
+    provenance_ready = bool(
+        startup_repo_state.get("is_git")
+        and startup_repo_state.get("status_ok")
+        and startup_repo_state.get("head")
+    )
+    if require_clean_tree and (not provenance_ready or startup_repo_state.get("dirty")):
+        stop_reason = "blocked_dirty_tree" if startup_repo_state.get("dirty") else "blocked_unverified_tree"
+        _append_text(progress_path, f"stop_reason={stop_reason}\n")
         _write_status(
             status_path,
-            stage="blocked_dirty_tree",
+            stage=stop_reason,
             session_dir=session_dir,
             repo_root=str(repo_root),
             started_at=started_at,
@@ -124,6 +137,7 @@ def run_autopilot(
             findings_new_path=findings_new_path,
             known_issues_path=known_issues_path,
             suspects_path=suspects_path,
+            provenance_unknown_path=provenance_unknown_path,
             findings_jsonl_path=findings_jsonl_path,
             progress_path=progress_path,
         )
@@ -252,6 +266,7 @@ def run_autopilot(
         findings_new_path=findings_new_path,
         known_issues_path=known_issues_path,
         suspects_path=suspects_path,
+        provenance_unknown_path=provenance_unknown_path,
         findings_jsonl_path=findings_jsonl_path,
         progress_path=progress_path,
     )
@@ -291,8 +306,6 @@ def _run_codex_exec(
         "-C",
         repo_root,
         "--skip-git-repo-check",
-        "--add-dir",
-        str(PACKAGE_ROOT),
         "-o",
         str(response_file),
         "--color",
@@ -313,7 +326,7 @@ def _run_codex_exec(
             input=prompt_text,
             text=True,
             capture_output=True,
-            cwd=str(PACKAGE_ROOT),
+            cwd=repo_root,
             timeout=timeout_seconds,
             check=False,
         )
@@ -338,6 +351,7 @@ def _ingest_pending_response(
     findings_new_path: Path,
     known_issues_path: Path,
     suspects_path: Path,
+    provenance_unknown_path: Path,
     findings_jsonl_path: Path,
     progress_path: Path,
 ) -> dict | None:
@@ -345,34 +359,34 @@ def _ingest_pending_response(
     state = load_state(session_dir)
     pending_target = (state.get("pending_target") or "").strip()
     pending_rank = state.get("pending_rank")
-    if not pending_target or not fixed_response.exists() or fixed_response.stat().st_size == 0:
+    if not fixed_response.exists() or fixed_response.stat().st_size == 0:
+        return None
+    if not pending_target:
+        archive_path = _archive_response_file(session_dir, fixed_response, prefix="stale-response")
+        _append_text(
+            progress_path,
+            (
+                "stale_response_without_pending_target=1\n"
+                f"stale_response_archive={archive_path}\n"
+            ),
+        )
         return None
 
     text = fixed_response.read_text(encoding="utf-8")
     try:
         parsed = parse_response(text)
     except ValueError as exc:
-        archive_path = _archive_response_file(session_dir, fixed_response)
+        archive_path = _archive_response_file(session_dir, fixed_response, prefix="parse-error-response")
         parse_dir = session_dir / AUTOPILOT_DIRNAME / "parse_errors"
         parse_dir.mkdir(parents=True, exist_ok=True)
         parse_path = parse_dir / f"parse-error-{datetime.now(UTC).strftime('%Y%m%dT%H%M%S%fZ')}-{_slugify(pending_target)[:60]}.txt"
         parse_path.write_text(text, encoding="utf-8")
-        updated = record_review(
-            session_dir=session_dir,
-            rank=pending_rank,
-            target=pending_target,
-            verdict="needs_more_context",
-            notes=f"parse_error: {exc}",
-            next_target="",
-            next_prompt="",
-            auto_advance=True,
-        )
         _append_text(
             progress_path,
             (
                 f"ingested_target={pending_target}\n"
                 f"ingested_rank={pending_rank}\n"
-                f"ingested_verdict=needs_more_context\n"
+                "parse_error_retryable=1\n"
                 f"parse_error={exc}\n"
                 f"response_archive={archive_path}\n"
                 f"parse_error_file={parse_path}\n"
@@ -385,7 +399,8 @@ def _ingest_pending_response(
             "next_target": "",
             "bucket": "non_finding",
             "reason": "parse_error",
-            "history_len": len(updated.get("history", [])),
+            "history_len": len(state.get("history", [])),
+            "retryable": True,
         }
 
     next_target = parsed["next_target"] if parsed["should_continue"] else ""
@@ -393,18 +408,7 @@ def _ingest_pending_response(
     if next_target and depth >= MAX_MANUAL_FOLLOWUPS:
         next_target = ""
 
-    updated = record_review(
-        session_dir=session_dir,
-        rank=pending_rank,
-        target=pending_target,
-        verdict=parsed["verdict"],
-        notes=parsed["notes"],
-        next_target=next_target,
-        next_prompt="",
-        auto_advance=True,
-    )
-    archive_path = _archive_response_file(session_dir, fixed_response)
-
+    classification: dict[str, object] = {}
     bucket = "non_finding"
     reason = "verdict_not_strong"
     if parsed["verdict"] in STRONG_FINDING_VERDICTS:
@@ -418,12 +422,28 @@ def _ingest_pending_response(
         )
         bucket = str(classification["bucket"])
         reason = str(classification["reason"])
+
+    updated = record_review(
+        session_dir=session_dir,
+        rank=pending_rank,
+        target=pending_target,
+        verdict=parsed["verdict"],
+        notes=parsed["notes"],
+        next_target=next_target,
+        next_prompt="",
+        auto_advance=True,
+        classification=classification,
+    )
+    archive_path = _archive_response_file(session_dir, fixed_response)
+
+    if parsed["verdict"] in STRONG_FINDING_VERDICTS:
         finding_path = _write_finding_record(
             findings_dir=findings_dir,
             findings_path=findings_path,
             findings_new_path=findings_new_path,
             known_issues_path=known_issues_path,
             suspects_path=suspects_path,
+            provenance_unknown_path=provenance_unknown_path,
             findings_jsonl_path=findings_jsonl_path,
             pending_target=pending_target,
             pending_rank=pending_rank,
@@ -465,6 +485,7 @@ def _write_finding_record(
     findings_new_path: Path,
     known_issues_path: Path,
     suspects_path: Path,
+    provenance_unknown_path: Path,
     findings_jsonl_path: Path,
     pending_target: str,
     pending_rank: int | None,
@@ -481,6 +502,7 @@ def _write_finding_record(
         "new_candidate": findings_dir / "new",
         "known_issue": findings_dir / "known",
         "dirty_tree_suspect": findings_dir / "suspects",
+        "provenance_unknown": findings_dir / "unknown",
     }.get(bucket, findings_dir)
     bucket_dir.mkdir(parents=True, exist_ok=True)
     finding_path = bucket_dir / f"finding-{stamp}-{_slugify(pending_target)[:60]}.txt"
@@ -495,8 +517,16 @@ def _write_finding_record(
         f"target_file={classification.get('target_file', '')}\n"
         f"dirty_repo={int(bool(classification.get('dirty_repo')))}\n"
         f"dirty_target={int(bool(classification.get('dirty_target')))}\n"
+        f"repo_is_git={int(bool(classification.get('repo_is_git')))}\n"
+        f"repo_status_ok={int(bool(classification.get('repo_status_ok')))}\n"
+        f"repo_branch={classification.get('repo_branch', '')}\n"
+        f"repo_head={classification.get('repo_head', '')}\n"
+        f"repo_error={classification.get('repo_error', '')}\n"
+        f"novelty_proven={int(bool(classification.get('novelty_proven')))}\n"
         f"referenced_cves={','.join(classification.get('referenced_cves', []))}\n"
+        f"related_cves={','.join(classification.get('related_cves', []))}\n"
         f"referenced_commits={','.join(classification.get('referenced_commits', []))}\n"
+        f"related_commits={','.join(classification.get('related_commits', []))}\n"
         f"present_commits={','.join(classification.get('present_commits', []))}\n"
         f"matched_markers={','.join(classification.get('matched_markers', []))}\n"
         f"next_target={next_target}\n"
@@ -525,6 +555,7 @@ def _write_finding_record(
         "new_candidate": findings_new_path,
         "known_issue": known_issues_path,
         "dirty_tree_suspect": suspects_path,
+        "provenance_unknown": provenance_unknown_path,
     }.get(bucket)
     if bucket_index_path is not None:
         _append_text(
@@ -552,8 +583,16 @@ def _write_finding_record(
         "target_file": classification.get("target_file", ""),
         "dirty_repo": bool(classification.get("dirty_repo")),
         "dirty_target": bool(classification.get("dirty_target")),
+        "repo_is_git": bool(classification.get("repo_is_git")),
+        "repo_status_ok": bool(classification.get("repo_status_ok")),
+        "repo_branch": classification.get("repo_branch", ""),
+        "repo_head": classification.get("repo_head", ""),
+        "repo_error": classification.get("repo_error", ""),
+        "novelty_proven": bool(classification.get("novelty_proven")),
         "referenced_cves": classification.get("referenced_cves", []),
+        "related_cves": classification.get("related_cves", []),
         "referenced_commits": classification.get("referenced_commits", []),
+        "related_commits": classification.get("related_commits", []),
         "present_commits": classification.get("present_commits", []),
         "matched_markers": classification.get("matched_markers", []),
         "next_target": next_target,
@@ -642,11 +681,11 @@ def _extract_snippet_from_candidate_dict(repo_root: Path, candidate: dict, radiu
     return "\n\n".join(blocks) + ("\n" if blocks else "")
 
 
-def _archive_response_file(session_dir: Path, fixed_response: Path) -> Path:
+def _archive_response_file(session_dir: Path, fixed_response: Path, *, prefix: str = "response") -> Path:
     archive_dir = response_archive_dir(session_dir)
     archive_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    archive_path = archive_dir / f"response-{stamp}.txt"
+    archive_path = archive_dir / f"{prefix}-{stamp}.txt"
     fixed_response.replace(archive_path)
     return archive_path
 
@@ -658,7 +697,7 @@ def _render_next_prompt(session_dir: Path, *, include_snippet: bool) -> dict:
     manual_prompt = (state.get("manual_next_prompt") or "").strip()
     depth = int(state.get("manual_followup_depth", 0))
 
-    if manual_target and depth >= MAX_MANUAL_FOLLOWUPS:
+    if manual_target and depth > MAX_MANUAL_FOLLOWUPS:
         state["manual_next_target"] = ""
         state["manual_next_prompt"] = ""
         state["manual_followup_depth"] = 0
@@ -709,7 +748,7 @@ def _build_autopilot_prompt(rendered: dict) -> str:
             "",
             "Final response contract:",
             "Strict verdict:",
-            "- one of: cve_candidate, plausible_security_bug, latent_bug, not_a_cve_candidate, needs_more_context",
+            "- one of: cve_candidate, plausible_security_bug, latent_bug, not_cve_candidate, needs_more_context",
             "",
             "Single best next target:",
             "- <file/function>",
@@ -755,8 +794,7 @@ def _manual_followup_prompt(state: dict, manual_target: str, manual_prompt: str)
 def _next_pending_rank(state: dict, manifest: dict) -> tuple[int, dict]:
     done = completed_ranks(state)
     candidates = manifest.get("candidates", [])
-    start = max(1, int(state.get("current_rank", 1)))
-    for rank in range(start, len(candidates) + 1):
+    for rank in range(1, len(candidates) + 1):
         if rank in done:
             continue
         candidate = candidates[rank - 1]
@@ -823,7 +861,10 @@ def _write_status(
         f"runs={runs}",
         f"repo_branch={repo_state.get('branch', '')}",
         f"repo_head={repo_state.get('head', '')}",
+        f"repo_is_git={int(bool(repo_state.get('is_git')))}",
+        f"repo_status_ok={int(bool(repo_state.get('status_ok')))}",
         f"repo_dirty={int(bool(repo_state.get('dirty')))}",
+        f"repo_error={repo_state.get('error', '')}",
         f"dirty_focus_paths={','.join(repo_state.get('dirty_focus_paths', []))}",
         f"current_rank={state.get('current_rank', 1)}",
         f"manual_followup_depth={state.get('manual_followup_depth', 0)}",
@@ -855,6 +896,8 @@ def _parse_duration(spec: str) -> int:
     if not match:
         raise SystemExit(f"invalid duration: {spec} (use forms like 30m, 1h, 45s)")
     value = int(match.group(1))
+    if value <= 0:
+        raise SystemExit(f"invalid duration: {spec} (value must be greater than zero)")
     unit = match.group(2)
     factors = {"s": 1, "m": 60, "h": 3600}
     return value * factors[unit]

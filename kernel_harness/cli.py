@@ -7,10 +7,11 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from kernel_harness import __version__
 from kernel_harness.autopilot import _candidate_to_prompt_assets, run_autopilot
-from kernel_harness.repo_state import collect_repo_state
 from kernel_harness.bundle import write_session_bundle
 from kernel_harness.ingest import load_response, parse_response
+from kernel_harness.repo_state import collect_repo_state
 from kernel_harness.session import (
     clear_pending_review,
     completed_ranks,
@@ -25,18 +26,25 @@ from kernel_harness.syzbot import fetch_dashboard, load_index, summarize_index
 from kernel_harness.targeting import discover_candidates, load_config
 
 
-PACKAGE_ROOT = Path(__file__).resolve().parent.parent
+RESOURCE_ROOT = Path(__file__).resolve().parent / "resources"
 PROFILE_CONFIGS = {
-    "default": PACKAGE_ROOT / "configs" / "linux-kernel-default.json",
-    "bpf": PACKAGE_ROOT / "configs" / "profiles" / "bpf.json",
-    "drivers": PACKAGE_ROOT / "configs" / "profiles" / "drivers.json",
-    "fs": PACKAGE_ROOT / "configs" / "profiles" / "fs.json",
-    "io_uring": PACKAGE_ROOT / "configs" / "profiles" / "io_uring.json",
-    "net": PACKAGE_ROOT / "configs" / "profiles" / "net.json",
+    "default": RESOURCE_ROOT / "linux-kernel-default.json",
+    "bpf": RESOURCE_ROOT / "profiles" / "bpf.json",
+    "drivers": RESOURCE_ROOT / "profiles" / "drivers.json",
+    "fs": RESOURCE_ROOT / "profiles" / "fs.json",
+    "io_uring": RESOURCE_ROOT / "profiles" / "io_uring.json",
+    "net": RESOURCE_ROOT / "profiles" / "net.json",
 }
 VERDICTS = ["cve_candidate", "plausible_security_bug", "latent_bug", "not_cve_candidate", "needs_more_context"]
 SUBCOMMANDS = {"scan", "inspect", "codex", "next", "record", "ingest", "loop", "status", "doctor", "autopilot", "syzbot-fetch", "syzbot-stats"}
 MAX_MANUAL_FOLLOWUPS = 2
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("value must be greater than zero")
+    return parsed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,6 +52,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="kernel-harness",
         description="Prepare kernel vulnerability hunting bundles for Codex.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     scan_parser = subparsers.add_parser("scan", help="Score files and generate a review session.")
@@ -51,11 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     inspect_parser = subparsers.add_parser("inspect", help="Print a ranked summary from a generated session.")
     inspect_parser.add_argument("session_dir", type=Path, help="Path to a generated session directory.")
-    inspect_parser.add_argument("--top", type=int, default=10, help="Number of ranked entries to print.")
+    inspect_parser.add_argument("--top", type=_positive_int, default=10, help="Number of ranked entries to print.")
 
     codex_parser = subparsers.add_parser("codex", help="Print a ready-to-paste Codex prompt for a ranked target.")
     codex_parser.add_argument("session_dir", type=Path, help="Path to a generated session directory.")
-    codex_parser.add_argument("--rank", type=int, default=1, help="Rank number from SESSION.md / targets.json.")
+    codex_parser.add_argument("--rank", type=_positive_int, default=1, help="Rank number from SESSION.md / targets.json.")
     codex_parser.add_argument("--include-snippet", action="store_true", help="Append the generated code snippet.")
     codex_parser.add_argument("--extra-instruction", default="", help="Extra instruction appended to the prompt.")
 
@@ -65,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     record_parser = subparsers.add_parser("record", help="Record a review verdict and prepare the next step.")
     record_parser.add_argument("session_dir", type=Path, help="Path to a generated session directory.")
-    record_parser.add_argument("--rank", type=int, required=True, help="Rank that was just reviewed.")
+    record_parser.add_argument("--rank", type=_positive_int, required=True, help="Rank that was just reviewed.")
     record_parser.add_argument("--target", required=True, help="Target path or function that was reviewed.")
     record_parser.add_argument("--verdict", choices=VERDICTS, required=True, help="Strict verdict for the review.")
     record_parser.add_argument("--notes", default="", help="Short review notes or summary.")
@@ -75,7 +84,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     ingest_parser = subparsers.add_parser("ingest", help="Parse a Codex response and update session state automatically.")
     ingest_parser.add_argument("session_dir", type=Path, help="Path to a generated session directory.")
-    ingest_parser.add_argument("--rank", type=int, required=True, help="Rank that was just reviewed.")
+    ingest_parser.add_argument("--rank", type=_positive_int, required=True, help="Rank that was just reviewed.")
     ingest_parser.add_argument("--target", required=True, help="Target path or function that was reviewed.")
     ingest_parser.add_argument("--response-file", type=Path, help="Path to a text file containing the Codex response. If omitted, stdin is used.")
     ingest_parser.add_argument("--next-prompt", default="", help="Optional focused prompt to pair with the parsed next target.")
@@ -98,20 +107,20 @@ def build_parser() -> argparse.ArgumentParser:
     autopilot_parser.add_argument("--per-run-timeout", default="20m", help="Maximum time per Codex execution. Example: 10m.")
     autopilot_parser.add_argument("--include-snippet", action="store_true", help="Append generated code snippets to prompts.")
     autopilot_parser.add_argument("--model", default="", help="Optional Codex model override.")
-    autopilot_parser.add_argument("--sandbox", choices=["read-only", "workspace-write", "danger-full-access"], default="workspace-write", help="Sandbox mode for codex exec when not bypassing safeguards.")
+    autopilot_parser.add_argument("--sandbox", choices=["read-only", "workspace-write", "danger-full-access"], default="read-only", help="Sandbox mode for codex exec when not bypassing safeguards (default: read-only).")
     autopilot_parser.add_argument("--no-full-auto", action="store_true", help="Do not pass --full-auto to codex exec.")
     autopilot_parser.add_argument("--dangerously-bypass-approvals-and-sandbox", action="store_true", help="Pass through Codex's unsafe bypass flag.")
-    autopilot_parser.add_argument("--stop-on-finding", action="store_true", help="Stop as soon as a strong candidate is found.")
-    autopilot_parser.add_argument("--require-clean-tree", action="store_true", help="Refuse to start if the kernel tree has local modifications.")
+    autopilot_parser.add_argument("--stop-on-finding", action="store_true", help="Stop when provenance triage yields a new_candidate.")
+    autopilot_parser.add_argument("--require-clean-tree", action="store_true", help="Require a valid Git repository with a clean working tree.")
 
     fetch_parser = subparsers.add_parser("syzbot-fetch", help="Fetch syzbot dashboard data into local JSON.")
     fetch_parser.add_argument("source", help="syzbot dashboard URL, for example https://syzkaller.appspot.com/upstream")
     fetch_parser.add_argument("--out", type=Path, required=True, help="Output JSON path.")
-    fetch_parser.add_argument("--limit", type=int, default=50, help="Maximum number of bug pages to ingest.")
+    fetch_parser.add_argument("--limit", type=_positive_int, default=50, help="Maximum number of bug pages to ingest.")
 
     stats_parser = subparsers.add_parser("syzbot-stats", help="Print a summary of a saved syzbot JSON file.")
     stats_parser.add_argument("syzbot_json", type=Path, help="Path to a JSON file created by syzbot-fetch.")
-    stats_parser.add_argument("--top", type=int, default=10, help="Top N subsystems/files to print.")
+    stats_parser.add_argument("--top", type=_positive_int, default=10, help="Top N subsystems/files to print.")
     return parser
 
 
@@ -121,8 +130,8 @@ def _add_scan_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", choices=sorted(PROFILE_CONFIGS), default="default", help="Built-in subsystem profile when --config is not set.")
     parser.add_argument("--syzbot-json", type=Path, help="Optional syzbot JSON created by syzbot-fetch.")
     parser.add_argument("--out", type=Path, default=Path("artifacts"), help="Directory where session artifacts will be written.")
-    parser.add_argument("--limit", type=int, default=80, help="Maximum number of candidates to score before truncation.")
-    parser.add_argument("--top", type=int, default=20, help="How many high-priority prompt bundles to generate.")
+    parser.add_argument("--limit", type=_positive_int, default=80, help="Maximum number of candidates retained in the session manifest.")
+    parser.add_argument("--top", type=_positive_int, default=20, help="How many high-priority prompt bundles to pre-generate; later ranks remain available on demand.")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -166,7 +175,7 @@ def _normalize_argv(argv: list[str]) -> list[str]:
         return ["scan", "--help"]
     if argv[0] in SUBCOMMANDS:
         return argv
-    if argv[0] in {"-h", "--help"}:
+    if argv[0] in {"-h", "--help", "--version"}:
         return argv
     return ["scan", *argv]
 
@@ -230,8 +239,10 @@ def _run_next(args: argparse.Namespace) -> int:
 
 
 def _run_record(args: argparse.Namespace) -> int:
+    session_dir = Path(args.session_dir).expanduser().resolve()
+    _validate_pending_review(session_dir, args.rank, args.target)
     state = record_review(
-        session_dir=Path(args.session_dir).expanduser().resolve(),
+        session_dir=session_dir,
         rank=args.rank,
         target=args.target,
         verdict=args.verdict,
@@ -246,11 +257,26 @@ def _run_record(args: argparse.Namespace) -> int:
 
 def _run_ingest(args: argparse.Namespace) -> int:
     session_dir = Path(args.session_dir).expanduser().resolve()
+    _validate_pending_review(session_dir, args.rank, args.target)
     text = load_response(args.response_file, sys.stdin.read())
     state = _ingest_text(session_dir, text, rank=args.rank, target=args.target, next_prompt=args.next_prompt, auto_advance=not args.no_auto_advance)
     _print_record_result(args.rank, state["history"][-1]["verdict"], state)
     print(f"parsed_next_target={state['history'][-1].get('next_target', '')}")
     return 0
+
+
+def _validate_pending_review(session_dir: Path, rank: int, target: str) -> None:
+    state = load_state(session_dir)
+    pending_target = (state.get("pending_target") or "").strip()
+    if not pending_target:
+        return
+    pending_rank = state.get("pending_rank")
+    if pending_rank != rank or pending_target != target:
+        raise SystemExit(
+            "review does not match pending target: "
+            f"expected rank={pending_rank} target={pending_target!r}, "
+            f"got rank={rank} target={target!r}"
+        )
 
 
 def _run_loop(args: argparse.Namespace) -> int:
@@ -273,12 +299,14 @@ def _run_loop(args: argparse.Namespace) -> int:
             )
             archive_dir = response_archive_dir(session_dir)
             archive_dir.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+            stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
             shutil.move(str(fixed_response), str(archive_dir / f"response-{stamp}.txt"))
             print(f"ingested_verdict={state['history'][-1]['verdict']}")
             print(f"ingested_next_target={state['history'][-1].get('next_target', '')}")
         else:
-            print("response_file_present_but_no_pending_target=1")
+            archive_path = _archive_stale_response(session_dir, fixed_response)
+            print("stale_response_without_pending_target=1")
+            print(f"stale_response_archive={archive_path}")
     _print_next_prompt(session_dir, include_snippet=args.include_snippet)
     return 0
 
@@ -306,9 +334,12 @@ def _run_doctor(args: argparse.Namespace) -> int:
     print(f"branch={state.get('branch', '')}")
     print(f"head={state.get('head', '')}")
     print(f"dirty={int(bool(state.get('dirty')))}")
+    print(f"status_ok={int(bool(state.get('status_ok')))}")
+    if state.get("error"):
+        print(f"error={state['error']}")
     for item in state.get("dirty_files", []):
         print(f"dirty_file={item}")
-    return 0
+    return 0 if state.get("is_git") and state.get("status_ok") and state.get("head") else 2
 
 
 def _run_status(args: argparse.Namespace) -> int:
@@ -382,7 +413,7 @@ def _print_next_prompt(session_dir: Path, include_snippet: bool) -> None:
     manual_target = state.get("manual_next_target", "").strip()
     manual_prompt = state.get("manual_next_prompt", "").strip()
     depth = int(state.get("manual_followup_depth", 0))
-    if manual_target and depth >= MAX_MANUAL_FOLLOWUPS:
+    if manual_target and depth > MAX_MANUAL_FOLLOWUPS:
         state["manual_next_target"] = ""
         state["manual_next_prompt"] = ""
         state["manual_followup_depth"] = 0
@@ -424,6 +455,15 @@ def _ingest_text(session_dir: Path, text: str, rank: int | None, target: str, ne
     )
 
 
+def _archive_stale_response(session_dir: Path, fixed_response: Path) -> Path:
+    archive_dir = response_archive_dir(session_dir)
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+    archive_path = archive_dir / f"stale-response-{stamp}.txt"
+    shutil.move(str(fixed_response), str(archive_path))
+    return archive_path
+
+
 def _print_codex_runbook(repo_root: str, prompt: str, prompt_path: Path, snippet_path: Path | None, include_snippet: bool, fixed_response_file: Path) -> None:
     print("# Codex CLI Runbook")
     print()
@@ -453,8 +493,7 @@ def _print_codex_runbook(repo_root: str, prompt: str, prompt_path: Path, snippet
 def _next_pending_rank(state: dict, manifest: dict) -> int:
     done = completed_ranks(state)
     candidates = manifest.get("candidates", [])
-    start = max(1, int(state.get("current_rank", 1)))
-    for rank in range(start, len(candidates) + 1):
+    for rank in range(1, len(candidates) + 1):
         if rank in done:
             continue
         candidate = candidates[rank - 1]
