@@ -5,7 +5,7 @@
 ## 1. 세션 생성
 
 ```bash
-python -m kernel_harness /path/to/linux --config /linux_harness/configs/linux-kernel-default.json --out /linux_harness/artifacts
+kernel-harness scan /path/to/linux --profile default --out artifacts
 ```
 
 ## 2. 가장 먼저 볼 파일
@@ -21,7 +21,7 @@ python -m kernel_harness /path/to/linux --config /linux_harness/configs/linux-ke
 ## 3. Codex에 넣을 기본 지시문
 
 ```text
-Open the target bundle and the referenced kernel file. Confirm the true userspace-reachable entrypoint first. Then audit only the shortest path to a realistic CVE candidate, prioritizing UAF, refcount, usercopy, integer truncation, infoleak, and missing capability checks. Do not give generic advice. Either produce a concrete bug hypothesis with evidence, or name the next 2 files/functions that must be inspected.
+Open the target bundle and the referenced kernel file. Confirm the true userspace-reachable entrypoint first. Then audit only the shortest path to a realistic CVE candidate, prioritizing UAF, refcount, usercopy, integer truncation, infoleak, and missing capability checks. Do not give generic advice. Either produce a concrete bug hypothesis with evidence, or name the single best next file/function to inspect.
 ```
 
 ## 4. 한 세션의 종료 조건

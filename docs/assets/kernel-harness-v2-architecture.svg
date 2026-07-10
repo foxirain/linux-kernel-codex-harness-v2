@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200"
+     height="760"
+     viewBox="0 0 1200 760"
+     role="img"
+     aria-labelledby="title desc"
+     shape-rendering="geometricPrecision"
+     text-rendering="optimizeLegibility">
+  <title id="title">External Signal from attention allocation to provenance-aware triage</title>
+  <desc id="desc">Pre-inference path, lexical, and cached syzbot signals rank kernel review targets. Post-inference triage combines model-independent Git repository provenance with model-derived response references; only the Git facts are External Signal. The result is a heuristic queue, and human validation remains required.</desc>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0 0 L12 6 L0 12 Z" fill="#1d4ed8"/>
+    </marker>
+    <marker id="arrow-teal" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0 0 L12 6 L0 12 Z" fill="#0f766e"/>
+    </marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+      .frame { fill: #ffffff; stroke: #cbd5e1; stroke-width: 2; }
+      .stage-one { fill: #eff6ff; stroke: #1d4ed8; stroke-width: 2.5; }
+      .stage-two { fill: #f0fdfa; stroke: #0f766e; stroke-width: 2.5; }
+      .neutral { fill: #ffffff; stroke: #334155; stroke-width: 2; }
+      .review { fill: #f8fafc; stroke: #334155; stroke-width: 2.5; }
+      .bucket { fill: #ffffff; stroke: #0f766e; stroke-width: 1.7; }
+      .caution { fill: #fff7ed; stroke: #c2410c; stroke-width: 2; }
+      .stage-label { font-size: 15px; font-weight: 800; letter-spacing: 1.4px; }
+      .blue { fill: #1d4ed8; }
+      .teal { fill: #0f766e; }
+      .title { font-size: 25px; font-weight: 750; fill: #0f172a; }
+      .body { font-size: 17px; fill: #334155; }
+      .small { font-size: 14px; fill: #475569; }
+      .principle { font-size: 14px; font-weight: 800; letter-spacing: .5px; }
+      .bucket-title { font-size: 17px; font-weight: 750; fill: #134e4a; }
+      .flow-one { fill: none; stroke: #1d4ed8; stroke-width: 3; marker-end: url(#arrow-blue); }
+      .flow-two { fill: none; stroke: #0f766e; stroke-width: 3; marker-end: url(#arrow-teal); }
+      .boundary-title { font-size: 15px; font-weight: 800; letter-spacing: 1px; fill: #9a3412; }
+      .boundary-text { font-size: 18px; font-weight: 650; fill: #7c2d12; }
+    </style>
+  </defs>
+
+  <rect x="1" y="1" width="1198" height="758" class="frame"/>
+
+  <!-- Stage 1: observations available before model inference -->
+  <text x="50" y="38" class="stage-label blue">STAGE 1 · PRE-INFERENCE EXTERNAL SIGNAL</text>
+
+  <rect x="50" y="60" width="260" height="180" rx="8" class="neutral"/>
+  <text x="72" y="100" class="title">Fixed Inputs</text>
+  <text x="72" y="137" class="body">Linux source tree</text>
+  <text x="72" y="169" class="body">Subsystem profile</text>
+  <text x="72" y="201" class="body">Cached syzbot JSON</text>
+  <text x="72" y="224" class="small">same inputs → reproducible rank</text>
+
+  <rect x="370" y="50" width="390" height="200" rx="8" class="stage-one"/>
+  <text x="394" y="91" class="title">Attention Allocation</text>
+  <text x="394" y="129" class="body">Path weights · lexical hits</text>
+  <text x="394" y="161" class="body">Cached syzbot overlap</text>
+  <text x="394" y="201" class="principle blue">RANKS WHERE TO LOOK</text>
+  <text x="394" y="228" class="small">priority signal, never vulnerability proof</text>
+
+  <rect x="820" y="60" width="330" height="180" rx="8" class="neutral"/>
+  <text x="844" y="100" class="title">Ranked Session</text>
+  <text x="844" y="137" class="body">targets.json · SESSION.md</text>
+  <text x="844" y="169" class="body">Prompt and code snippets</text>
+  <text x="844" y="201" class="body">Bounded next target</text>
+  <text x="844" y="224" class="small">state shared by manual and autopilot</text>
+
+  <path d="M310 150 H360" class="flow-one"/>
+  <path d="M760 150 H810" class="flow-one"/>
+
+  <!-- Model inference boundary -->
+  <rect x="400" y="300" width="400" height="120" rx="8" class="review"/>
+  <text x="430" y="341" class="stage-label" fill="#334155">FOCUSED CODEX REVIEW</text>
+  <text x="430" y="377" class="body">Reachability → invariant → impact</text>
+  <text x="430" y="403" class="small">strict verdict + one best next target</text>
+  <path d="M985 240 V278 H600 V290" class="flow-one"/>
+
+  <!-- Stage 2: observations available after model inference -->
+  <text x="50" y="470" class="stage-label teal">STAGE 2 · POST-INFERENCE PROVENANCE-AWARE TRIAGE</text>
+
+  <rect x="50" y="492" width="350" height="162" rx="8" class="neutral"/>
+  <text x="74" y="531" class="title">Triage Inputs</text>
+  <text x="74" y="566" class="body">Git branch · HEAD ancestry</text>
+  <text x="74" y="596" class="body">Repository / target dirty state</text>
+  <text x="74" y="626" class="body">CVE · fix/upstream commit · markers</text>
+  <text x="74" y="648" class="small">model-derived references (not External Signal)</text>
+
+  <rect x="455" y="482" width="330" height="182" rx="8" class="stage-two"/>
+  <text x="480" y="522" class="title">Heuristic Triage</text>
+  <text x="480" y="559" class="body">Strong verdicts only</text>
+  <text x="480" y="591" class="body">Dirty state takes precedence</text>
+  <text x="480" y="625" class="principle teal">ORGANIZES REVIEW QUEUES</text>
+  <text x="480" y="650" class="small">does not establish novelty</text>
+
+  <rect x="840" y="468" width="310" height="206" rx="8" class="stage-two"/>
+  <text x="864" y="505" class="title">Finding Buckets</text>
+  <rect x="865" y="518" width="260" height="31" rx="5" class="bucket"/>
+  <text x="882" y="540" class="bucket-title">new_candidate</text>
+  <rect x="865" y="557" width="260" height="31" rx="5" class="bucket"/>
+  <text x="882" y="579" class="bucket-title">known_issue</text>
+  <rect x="865" y="596" width="260" height="31" rx="5" class="bucket"/>
+  <text x="882" y="618" class="bucket-title">dirty_tree_suspect</text>
+  <rect x="865" y="635" width="260" height="31" rx="5" class="bucket"/>
+  <text x="882" y="657" class="bucket-title">provenance_unknown</text>
+
+  <path d="M600 420 V450 H225 V482" class="flow-two"/>
+  <path d="M400 573 H445" class="flow-two"/>
+  <path d="M785 573 H830" class="flow-two"/>
+
+  <!-- Automated output is not a proof boundary -->
+  <rect x="50" y="700" width="1100" height="42" rx="6" class="caution"/>
+  <text x="75" y="727" class="boundary-title">HUMAN VALIDATION REQUIRED</text>
+  <text x="365" y="728" class="boundary-text">new_candidate = no blocking marker detected, not novelty proof</text>
+</svg>

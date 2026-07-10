@@ -10,13 +10,14 @@
 4. `scan --syzbot-json ...`으로 후보 파일 스코어에 반영한다.
 5. 생성된 prompt에는 `syzbot context` 섹션이 추가된다.
 
+이 cache는 모델 호출 전에 계산되는 pre-inference External Signal이다. 동일한 결과를 재계산하려면 live dashboard가 아니라 fetch 시점에 저장한 같은 JSON을 사용해야 하며, overlap은 review priority일 뿐 vulnerability proof가 아니다.
+
 ## 1. syzbot 데이터 가져오기
 
 가장 일반적인 upstream 대시보드 예시는 아래다.
 
 ```bash
-cd /linux_harness
-python -m kernel_harness syzbot-fetch https://syzkaller.appspot.com/upstream --out /linux_harness/artifacts/syzbot/upstream.json --limit 50
+kernel-harness syzbot-fetch https://syzkaller.appspot.com/upstream --out artifacts/syzbot/upstream.json --limit 50
 ```
 
 다른 대시보드 URL도 가능하다. 예를 들면 특정 브랜치나 상태 페이지를 넣을 수 있다.
@@ -24,7 +25,7 @@ python -m kernel_harness syzbot-fetch https://syzkaller.appspot.com/upstream --o
 ## 2. 가져온 데이터 요약 보기
 
 ```bash
-python -m kernel_harness syzbot-stats /linux_harness/artifacts/syzbot/upstream.json --top 15
+kernel-harness syzbot-stats artifacts/syzbot/upstream.json --top 15
 ```
 
 이 명령은 많이 나오는 bug type, subsystem, file path를 요약해서 보여준다.
@@ -32,19 +33,19 @@ python -m kernel_harness syzbot-stats /linux_harness/artifacts/syzbot/upstream.j
 ## 3. 스캔에 반영하기
 
 ```bash
-python -m kernel_harness scan /path/to/linux --profile fs --syzbot-json /linux_harness/artifacts/syzbot/upstream.json --out /linux_harness/artifacts
+kernel-harness scan /path/to/linux --profile fs --syzbot-json artifacts/syzbot/upstream.json --out artifacts
 ```
 
 이제 `inspect` 출력의 `ext=` 값은 외부 crash intelligence가 몇 개 붙었는지 뜻한다.
 
 ```bash
-python -m kernel_harness inspect /linux_harness/artifacts/session-YYYYMMDDTHHMMSSZ --top 10
+kernel-harness inspect artifacts/session-YYYYMMDDTHHMMSSZ --top 10
 ```
 
 ## 4. Codex에 넣기
 
 ```bash
-python -m kernel_harness codex /linux_harness/artifacts/session-YYYYMMDDTHHMMSSZ --rank 1 --include-snippet
+kernel-harness codex artifacts/session-YYYYMMDDTHHMMSSZ --rank 1 --include-snippet
 ```
 
 prompt 안에 `syzbot context:` 블록이 추가된다. 이건 증거가 아니라 힌트다. Codex는 여기서:
