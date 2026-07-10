@@ -2,15 +2,15 @@
 
 [![CI](https://github.com/foxirain/linux-kernel-codex-harness-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/foxirain/linux-kernel-codex-harness-v2/actions/workflows/ci.yml)
 
-<p align="center"><strong>Portfolio Artifact · Original Import: 3 April 2026 · v2 Archival Revision: 11 July 2026</strong></p>
+<p align="center"><strong>Research Tool · Original Import: 3 April 2026 · v2 Documentation Revision: 11 July 2026</strong></p>
 
 <p align="center"><strong>External Signal: From Attention Allocation to Provenance-Aware Triage</strong><br>Use reproducible observations to guide model attention, then use repository provenance to organize review queues—never to claim proof.</p>
 
-> **Project status.** 이 저장소는 Linux 커널 취약점 조사에서 제한된 LLM 분석 예산을 어떻게 배분하고, 생성된 finding을 어떤 provenance와 함께 검토할지 실험한 포트폴리오 프로젝트입니다. 자동 취약점 탐지기, 신규성 판정기, exploit 검증기 또는 커널 보안 보증 도구가 아닙니다.
+> **Project status.** 이 저장소는 실제 Linux 커널 취약점 조사를 위해 v1의 attention-allocation workflow를 provenance-aware triage까지 발전시킨 LLM-assisted research harness입니다. 이 버전은 [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075)로 공개된 취약점을 발견하는 데 사용됐습니다. 자동 취약점 탐지기, 신규성 판정기, exploit 검증기 또는 커널 보안 보증 도구가 아니며, 최종 검증과 보고는 사람이 수행합니다.
 
 ## Abstract
 
-**Abstract—** Linux 커널처럼 큰 코드베이스를 LLM에 그대로 탐색시키면 컨텍스트가 분산되고, 위험한 API의 존재와 실제 공격 가능성이 쉽게 혼동된다. `Kernel Codex Harness v2`는 이 문제를 두 단계의 **External Signal** 처리로 정의한다. 모델 호출 전에는 경로 weight, lexical hit, cached syzbot overlap으로 후보 파일을 순위화해 attention을 배분한다. 모델 응답 뒤에는 Git branch·HEAD·dirty state와 응답에서 추출한 CVE·commit·known marker를 결합해 strong finding을 provenance-aware review bucket으로 분류한다. 이 분류는 조사 큐를 정리하는 heuristic이며, 특히 `new_candidate`는 알려진 단서나 provenance 문제를 발견하지 못했다는 뜻일 뿐 novelty proof가 아니다. 모든 finding은 userspace reachability, invariant break, concrete impact에 대한 사람의 재검증을 요구한다.
+**Abstract—** Linux 커널처럼 큰 코드베이스를 LLM에 그대로 탐색시키면 컨텍스트가 분산되고, 위험한 API의 존재와 실제 공격 가능성이 쉽게 혼동된다. `Kernel Codex Harness v2`는 이 문제를 두 단계의 **External Signal** 처리로 정의한다. 모델 호출 전에는 경로 weight, lexical hit, cached syzbot overlap으로 후보 파일을 순위화해 attention을 배분한다. 모델 응답 뒤에는 Git branch·HEAD·dirty state와 응답에서 추출한 CVE·commit·known marker를 결합해 strong finding을 provenance-aware review bucket으로 분류한다. 이 하네스는 실제 Linux 커널 조사에서 PPP의 target network namespace 권한 검증 결함을 발견하는 데 사용됐고, 해당 결함은 [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075)로 공개됐다. Triage는 조사 큐를 정리하는 heuristic이며, 특히 `new_candidate`는 알려진 단서나 provenance 문제를 발견하지 못했다는 뜻일 뿐 novelty proof가 아니다. 모든 finding은 userspace reachability, invariant break, concrete impact에 대한 사람의 재검증을 요구한다.
 
 **Index Terms—** Linux kernel, vulnerability research, external signal, provenance, heuristic triage, LLM orchestration, syzbot, Codex.
 
@@ -21,7 +21,7 @@
 1. **어디를 먼저 볼 것인가.** 전체 소스 트리는 한 번의 모델 컨텍스트로 다루기에 너무 크다.
 2. **모델이 낸 강한 finding을 어떻게 취급할 것인가.** 로컬 수정, 기존 fix, 알려진 CVE 또는 불완전한 repository state가 결론을 오염시킬 수 있다.
 
-v1의 중심 문제는 첫 번째, 즉 attention allocation이었다. v2는 그 원칙을 유지하면서 두 번째 문제를 provenance-aware triage로 확장한다.
+v1의 중심 문제는 첫 번째, 즉 attention allocation이었다. v2는 그 원칙을 유지하면서 두 번째 문제를 provenance-aware triage로 확장한다. 두 버전은 각각 실제 조사에 사용됐으며, v1-assisted investigation은 CVE-2026-31720으로, v2-assisted investigation은 CVE-2026-53075로 이어졌다.
 
 > 모델 바깥의 관찰값으로 조사 범위를 좁히고, 모델 응답 뒤에는 검증 가능한 repository provenance를 붙인다. 어느 단계의 signal도 취약점 또는 신규성을 증명하지 않는다.
 
@@ -293,7 +293,15 @@ artifacts/session-<timestamp>/
 
 `AUTOPILOT_FINDINGS.jsonl`은 verdict, bucket, reason, branch, HEAD, provenance 상태, matched reference, finding/archive 경로를 후처리 가능한 형태로 보존한다.
 
-## VI. Verification
+## VI. Operational Outcome and Verification
+
+v2는 확장된 구조를 실제 Linux 커널 취약점 조사에 적용했다.
+
+**TABLE II — DISCLOSED VULNERABILITY OUTCOME**
+
+| Public outcome | Affected area | Vulnerability | Investigation model |
+| --- | --- | --- | --- |
+| [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075) | PPP · `drivers/net/ppp/ppp_generic.c` | Unattached administrative ioctls lacked a `CAP_NET_ADMIN` check against the user namespace owning the target network namespace | Finding surfaced during a v2-assisted investigation; validation and disclosure remained human-led |
 
 16개의 regression test는 보안 탐지 정확도 benchmark가 아니라 software contract와 배포 가능성에 초점을 둔다.
 
@@ -314,7 +322,7 @@ python -m pip wheel . --no-deps --wheel-dir dist
 python -m pip install --force-reinstall dist/*.whl
 ```
 
-GitHub Actions는 Python 3.11과 3.12에서 regression test를 실행하고 wheel을 설치한 뒤 6개 packaged profile과 default scan을 smoke-test한다. 이 검증은 precision, recall, exploitability 또는 CVE discovery rate를 측정하지 않는다.
+GitHub Actions는 Python 3.11과 3.12에서 regression test를 실행하고 wheel을 설치한 뒤 6개 packaged profile과 default scan을 smoke-test한다. 위 공개 사례는 실제 조사에서 얻은 operational outcome이지만 대표 Linux tree corpus에서 측정한 precision, recall, exploitability 또는 CVE discovery rate benchmark는 아니다.
 
 ## VII. Safety Considerations
 
@@ -336,11 +344,11 @@ GitHub Actions는 Python 3.11과 3.12에서 regression test를 실행하고 whee
 6. **Response-derived references.** CVE와 known marker는 모델 응답에서 추출되므로 누락·환각·문맥 오해 가능성이 있다.
 7. **Heuristic triage.** `new_candidate`와 `known_issue` 모두 최종 신규성 판정이 아니다.
 8. **Model dependence.** 결과 품질은 모델, prompt interpretation, available repository context에 의존한다.
-9. **Evaluation scope.** 현재 테스트는 software regression을 검증하며 security detection 성능을 측정하지 않는다.
+9. **Evaluation scope.** 현재 테스트는 software regression을 검증한다. 공개된 CVE 사례는 실제 사용 결과이지만 security detection 성능에 대한 통계적 평가를 대체하지 않는다.
 
 ## IX. Evolution and Retrospective
 
-v1([repository](https://github.com/foxirain/linux-kernel-codex-harness))은 **External Signal로 LLM attention을 배분하는 문제**에 집중했다. v2는 모델이 strong finding을 낸 뒤에도 repository state와 response-derived reference를 함께 기록해야 결과를 재검토할 수 있다는 점을 반영한다.
+v1([repository](https://github.com/foxirain/linux-kernel-codex-harness))은 **External Signal로 LLM attention을 배분하는 문제**에 집중했고, 실제 v1-assisted 조사에서 [CVE-2026-31720](https://nvd.nist.gov/vuln/detail/CVE-2026-31720)을 발견하는 데 사용됐다. v2는 동일한 연구 철학을 이어 모델이 strong finding을 낸 뒤에도 repository state와 response-derived reference를 함께 기록하도록 확장했다. 이 구조를 사용한 후속 조사에서는 [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075)가 발견됐다.
 
 ```text
 v1: source observations → rank → focused review
@@ -356,7 +364,7 @@ v2: source observations → rank → focused review → provenance-aware triage
 
 ## X. Conclusion
 
-`Kernel Codex Harness v2`는 취약점 탐지를 대체하지 않는다. 모델 호출 전 External Signal은 조사 예산을 설명 가능한 후보에 배분하고, 모델 호출 후 provenance signal은 strong finding을 검토 가능한 큐로 정리한다. 프로젝트의 핵심 결과는 신규 취약점 판정 알고리즘이 아니라 **attention allocation과 provenance-aware triage를 명시적으로 분리한 LLM 보안 검토 구조**다.
+`Kernel Codex Harness v2`는 취약점 탐지를 대체하지 않는다. 모델 호출 전 External Signal은 조사 예산을 설명 가능한 후보에 배분하고, 모델 호출 후 provenance signal은 strong finding을 검토 가능한 큐로 정리한다. 이 구조는 실제 조사에서 CVE-2026-53075 발견에 사용됐으며, 프로젝트의 핵심 결과는 신규성을 자동 판정하는 알고리즘이 아니라 **attention allocation과 provenance-aware triage를 명시적으로 분리한 실전 LLM 보안 검토 workflow**다.
 
 ## Appendix A. Repository Layout
 
