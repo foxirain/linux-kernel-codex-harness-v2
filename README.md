@@ -6,6 +6,8 @@
 
 <p align="center"><strong>External Signal: From Attention Allocation to Provenance-Aware Triage</strong><br>Use reproducible observations to guide model attention, then use repository provenance to organize review queues—never to claim proof.</p>
 
+> **Project Lineage—** [Kernel Codex Harness v1](https://github.com/foxirain/linux-kernel-codex-harness) · *Attention Allocation* → **Kernel Codex Harness v2** · *Provenance-Aware Triage*
+
 > **Project status.** 이 저장소는 실제 Linux 커널 취약점 조사를 위해 v1의 attention-allocation workflow를 provenance-aware triage까지 발전시킨 LLM-assisted research harness입니다. 이 버전은 [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075)로 공개된 취약점을 발견하는 데 사용됐습니다. 자동 취약점 탐지기, 신규성 판정기, exploit 검증기 또는 커널 보안 보증 도구가 아니며, 최종 검증과 보고는 사람이 수행합니다.
 
 ## Abstract
