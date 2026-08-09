@@ -1,5 +1,7 @@
 # Kernel Codex Harness v2
 
+[한국어](README.md) | [English](README.en.md)
+
 [![CI](https://github.com/foxirain/linux-kernel-codex-harness-v2/actions/workflows/ci.yml/badge.svg)](https://github.com/foxirain/linux-kernel-codex-harness-v2/actions/workflows/ci.yml)
 
 <p align="center"><strong>Research Tool · Original Import: 3 April 2026 · v2 Documentation Revision: 11 July 2026</strong></p>
