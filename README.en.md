@@ -305,7 +305,7 @@ v2 applied the extended architecture to real Linux kernel vulnerability research
 
 | Public outcome | Affected area | Severity / CVSS | Vulnerability | Investigation model |
 | --- | --- | --- | --- | --- |
-| [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075) | PPP · `drivers/net/ppp/ppp_generic.c` | **High · 8.8 · CVSS 3.1** (Linux CNA) | Unattached administrative ioctls lacked a `CAP_NET_ADMIN` check against the user namespace owning the target network namespace | Finding surfaced during a v2-assisted investigation; validation and disclosure remained human-led |
+| [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075) | PPP · `drivers/net/ppp/ppp_generic.c` | ![High](https://img.shields.io/badge/High-C2410C?style=flat-square) **8.8 · CVSS 3.1** (Linux CNA) | Unattached administrative ioctls lacked a `CAP_NET_ADMIN` check against the user namespace owning the target network namespace | Finding surfaced during a v2-assisted investigation; validation and disclosure remained human-led |
 
 <details>
 <summary><strong>CVSS provenance (checked 2026-08-09)</strong></summary>
