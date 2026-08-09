@@ -303,9 +303,17 @@ v2는 확장된 구조를 실제 Linux 커널 취약점 조사에 적용했다.
 
 **TABLE II — DISCLOSED VULNERABILITY OUTCOME**
 
-| Public outcome | Affected area | Vulnerability | Investigation model |
-| --- | --- | --- | --- |
-| [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075) | PPP · `drivers/net/ppp/ppp_generic.c` | Unattached administrative ioctls lacked a `CAP_NET_ADMIN` check against the user namespace owning the target network namespace | Finding surfaced during a v2-assisted investigation; validation and disclosure remained human-led |
+| Public outcome | Affected area | Severity / CVSS | Vulnerability | Investigation model |
+| --- | --- | --- | --- | --- |
+| [CVE-2026-53075](https://nvd.nist.gov/vuln/detail/CVE-2026-53075) | PPP · `drivers/net/ppp/ppp_generic.c` | **High · 8.8 · CVSS 3.1** (Linux CNA) | Unattached administrative ioctls lacked a `CAP_NET_ADMIN` check against the user namespace owning the target network namespace | Finding surfaced during a v2-assisted investigation; validation and disclosure remained human-led |
+
+<details>
+<summary><strong>CVSS 출처 (2026-08-09 확인)</strong></summary>
+
+- `CVE-2026-53075`: [Linux CNA CVE record](https://www.cve.org/CVERecord?id=CVE-2026-53075) · CVSS 3.1 · 8.8 High · `CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H`
+- 공식 공개 점수와 vector를 옮겼으며 별도로 재산정하지 않았다.
+
+</details>
 
 16개의 regression test는 보안 탐지 정확도 benchmark가 아니라 software contract와 배포 가능성에 초점을 둔다.
 
